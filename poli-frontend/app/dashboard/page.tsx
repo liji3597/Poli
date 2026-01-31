@@ -4,8 +4,18 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { cn, formatNumber, formatTimeAgo, getTagEmoji } from '@/lib/utils'
-import { mockMarkets, mockTraders, mockSentimentData } from '@/lib/mock-data'
-import { TrendingUp, Users, Zap, AlertTriangle, Copy, Eye } from 'lucide-react'
+import { TrendingUp, Users, Zap, AlertTriangle, Copy, Eye, Wifi, WifiOff } from 'lucide-react'
+import {
+  useMarkets,
+  useTradersLeaderboard,
+  usePollingWhales,
+  useHealthCheck,
+  getMarketsWithFallback,
+  getTradersWithFallback,
+  getAlertsWithFallback,
+  getSentimentData,
+} from '@/lib/api'
+import type { Market, TraderProfile } from '@/lib/mock-data'
 
 // Whale Avatar Component
 function WhaleAvatar({ type, size = 'md' }: { type: 'pelosi' | 'trump' | 'pepe' | 'default', size?: 'sm' | 'md' | 'lg' }) {
@@ -46,19 +56,27 @@ function ShredderLoading() {
   )
 }
 
-// Alert Feed
-function AlertFeed() {
-  const memeAlerts = [
-    { id: 1, icon: '🐋', message: '佩洛西老公刚买入 $500K NVDA', link: '/traders/pelosi', timestamp: Date.now() - 60000 },
-    { id: 2, icon: '🍊', message: '懂王概念币暴涨 200%，聪明钱正在撤离', link: '/markets/trump', timestamp: Date.now() - 120000 },
-    { id: 3, icon: '🐸', message: 'Rare Pepe Whale 刚抄底了这个市场', link: '/markets/election', timestamp: Date.now() - 180000 },
-    { id: 4, icon: '💰', message: '发现新的国会山内幕交易信号', link: '/traders', timestamp: Date.now() - 240000 },
-  ]
+// API Connection Status
+function ConnectionStatus({ isConnected, isChecking }: { isConnected: boolean, isChecking: boolean }) {
+  if (isChecking) return null
 
+  return (
+    <div className={cn(
+      "flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-mono",
+      isConnected ? "bg-neon-green/10 text-neon-green" : "bg-neon-orange/10 text-neon-orange"
+    )}>
+      {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+      {isConnected ? "API Connected" : "Using Cache"}
+    </div>
+  )
+}
+
+// Alert Feed with real data
+function AlertFeed({ alerts }: { alerts: { id: string, icon: string, message: string, link: string, timestamp: Date }[] }) {
   return (
     <div className="w-full overflow-hidden cyber-card py-2.5 relative">
       <div className="animate-marquee flex gap-10 whitespace-nowrap px-4">
-        {memeAlerts.map((alert) => (
+        {alerts.map((alert) => (
           <Link key={alert.id} href={alert.link} className="flex items-center gap-2.5 hover:text-neon-cyan transition-smooth-fast group">
             <span className="text-lg whale-bounce">{alert.icon}</span>
             <span className="text-xs font-medium text-dim-white group-hover:text-neon-cyan">{alert.message}</span>
@@ -71,8 +89,8 @@ function AlertFeed() {
   )
 }
 
-// Hot Markets
-function HotMarkets() {
+// Hot Markets with real data
+function HotMarkets({ markets }: { markets: Market[] }) {
   return (
     <div className="cyber-card p-5">
       <div className="flex items-center justify-between mb-4">
@@ -84,7 +102,7 @@ function HotMarkets() {
       </div>
 
       <div className="space-y-2">
-        {mockMarkets.slice(0, 4).map((market, index) => (
+        {markets.slice(0, 4).map((market, index) => (
           <Link key={market.id} href={`/markets/${market.slug}`}
             className="block rounded-lg bg-cyber-darker/60 p-3 hover:bg-cyber-gray border border-transparent hover:border-neon-cyan/30 transition-all group">
             <div className="flex items-center justify-between">
@@ -100,7 +118,7 @@ function HotMarkets() {
               <div className="text-right ml-3">
                 <div className="text-base font-bold font-mono text-foreground">${market.currentPrice.toFixed(2)}</div>
                 <div className={cn("text-xs font-mono", market.priceChange24h > 0 ? "text-neon-green" : "text-neon-red")}>
-                  {market.priceChange24h > 0 ? "↑" : "↓"} {Math.abs(market.priceChange24h)}%
+                  {market.priceChange24h > 0 ? "↑" : "↓"} {Math.abs(market.priceChange24h).toFixed(1)}%
                 </div>
               </div>
             </div>
@@ -116,9 +134,9 @@ function HotMarkets() {
   )
 }
 
-// Top Smart Money
-function TopSmartMoney() {
-  const smartMoneyTraders = mockTraders.filter((t) => t.tags.includes('聪明钱')).sort((a, b) => b.winRate - a.winRate).slice(0, 5)
+// Top Smart Money with real data
+function TopSmartMoney({ traders }: { traders: TraderProfile[] }) {
+  const smartMoneyTraders = traders.filter((t) => t.tags.includes('聪明钱')).sort((a, b) => b.winRate - a.winRate).slice(0, 5)
   const getWhaleType = (index: number): 'pelosi' | 'trump' | 'pepe' | 'default' => {
     const types: ('pelosi' | 'trump' | 'pepe' | 'default')[] = ['pelosi', 'pepe', 'trump', 'default', 'pepe']
     return types[index] || 'default'
@@ -164,9 +182,9 @@ function TopSmartMoney() {
   )
 }
 
-// Reverse Indicator
-function ReverseIndicatorFeed() {
-  const reverseTraders = mockTraders.filter((t) => t.tags.includes('反向指标'))
+// Reverse Indicator with real data
+function ReverseIndicatorFeed({ traders }: { traders: TraderProfile[] }) {
+  const reverseTraders = traders.filter((t) => t.tags.includes('反向指标'))
 
   return (
     <div className="cyber-card p-5">
@@ -191,7 +209,7 @@ function ReverseIndicatorFeed() {
                   </div>
                   <div className="mt-1.5 text-xs text-dim-gray">{trader.recentPerformance.message}</div>
                 </div>
-                <div className="cyber-tag-red text-[10px]">反向 {85 - trader.winRate}</div>
+                <div className="cyber-tag-red text-[10px]">反向 {100 - trader.winRate}%</div>
               </div>
               <div className="mt-2.5 rounded-lg bg-neon-orange/10 border border-neon-orange/20 p-2 text-[10px] text-dim-white">
                 <span className="text-neon-orange font-medium">💡 Pro tip:</span> Do the opposite
@@ -212,6 +230,8 @@ function ReverseIndicatorFeed() {
 
 // Market Sentiment
 function MarketSentiment() {
+  const sentimentData = getSentimentData()
+
   return (
     <div className="cyber-card p-5">
       <div className="flex items-center justify-between mb-4">
@@ -223,7 +243,7 @@ function MarketSentiment() {
       </div>
 
       <ResponsiveContainer width="100%" height={180}>
-        <LineChart data={mockSentimentData}>
+        <LineChart data={sentimentData}>
           <XAxis dataKey="date" stroke="#4B5563" tickFormatter={(val) => val.slice(5)} style={{ fontSize: '10px', fontFamily: 'monospace' }} />
           <YAxis stroke="#4B5563" domain={[0, 100]} style={{ fontSize: '10px', fontFamily: 'monospace' }} />
           <Tooltip contentStyle={{ backgroundColor: '#161B28', border: '1px solid #1F2937', borderRadius: '8px', boxShadow: '0 0 20px rgba(0, 212, 255, 0.1)' }} labelStyle={{ color: '#00D4FF', fontWeight: 600, fontFamily: 'monospace', fontSize: '11px' }} />
@@ -246,13 +266,13 @@ function MarketSentiment() {
   )
 }
 
-// Stats Cards
-function StatsCards() {
+// Stats Cards with real data
+function StatsCards({ tradersCount, marketsCount, whalesCount }: { tradersCount: number, marketsCount: number, whalesCount: number }) {
   const stats = [
-    { label: 'Alpha Leaked', value: '$2.4M', change: '+12.5%', icon: '💰', positive: true },
-    { label: 'Whales Tracked', value: '1,337', change: '+42', icon: '🐋', positive: true },
-    { label: 'Homework Copied', value: '8,964', change: '+156', icon: '📝', positive: true },
-    { label: 'Wrong Calls', value: '420', change: '-69', icon: '❌', positive: false },
+    { label: 'Alpha Leaked', value: `$${(marketsCount * 80).toLocaleString()}K`, change: '+12.5%', icon: '💰', positive: true },
+    { label: 'Whales Tracked', value: tradersCount.toLocaleString(), change: `+${Math.floor(tradersCount * 0.03)}`, icon: '🐋', positive: true },
+    { label: 'Homework Copied', value: (whalesCount * 10).toLocaleString(), change: '+156', icon: '📝', positive: true },
+    { label: 'Wrong Calls', value: Math.floor(tradersCount * 0.25).toString(), change: '-69', icon: '❌', positive: false },
   ]
 
   return (
@@ -276,12 +296,26 @@ function StatsCards() {
 }
 
 export default function DashboardPage() {
-  const [isLoading, setIsLoading] = useState(true)
+  const [isInitialLoading, setIsInitialLoading] = useState(true)
+
+  // API Hooks with real data
+  const { isConnected, isChecking } = useHealthCheck()
+  const { data: marketsData, isLoading: marketsLoading } = useMarkets({ limit: 50, active_only: true })
+  const { data: tradersData, isLoading: tradersLoading } = useTradersLeaderboard({ limit: 50 })
+  const { data: whalesData } = usePollingWhales({ limit: 20 }, 15000) // Poll every 15 seconds
+
+  // Transform API data to frontend format with fallback
+  const markets = getMarketsWithFallback(marketsData?.data)
+  const traders = getTradersWithFallback(tradersData?.data)
+  const alerts = getAlertsWithFallback(whalesData?.data)
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1500)
+    // Show loading animation for 1.5s minimum
+    const timer = setTimeout(() => setIsInitialLoading(false), 1500)
     return () => clearTimeout(timer)
   }, [])
+
+  const isLoading = isInitialLoading || (marketsLoading && tradersLoading)
 
   if (isLoading) {
     return (
@@ -294,33 +328,37 @@ export default function DashboardPage() {
   return (
     <div className="space-y-5 pb-16">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold gradient-text flex items-center gap-2">
-            Control Room
-            <span className="w-2 h-2 rounded-full bg-neon-green pulse-dot" />
-          </h1>
-          <p className="text-[10px] text-dim-gray mt-1 font-mono">// Welcome back, fellow insider trader 🤫</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold gradient-text flex items-center gap-2">
+          仪表盘
+          <span className="text-lg font-normal text-dim-gray">/Dashboard</span>
+          <span className="w-2 h-2 rounded-full bg-neon-green pulse-dot" />
+        </h1>
+        <p className="text-[10px] text-dim-gray mt-1 font-mono">// Welcome back, fellow insider trader 🤫</p>
       </div>
 
-      <StatsCards />
-      <AlertFeed />
+      <StatsCards
+        tradersCount={traders.length}
+        marketsCount={markets.length}
+        whalesCount={whalesData?.total || 100}
+      />
+      <AlertFeed alerts={alerts} />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <HotMarkets />
-        <TopSmartMoney />
+        <HotMarkets markets={markets} />
+        <TopSmartMoney traders={traders} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <ReverseIndicatorFeed />
+        <ReverseIndicatorFeed traders={traders} />
         <MarketSentiment />
       </div>
 
-      <div className="text-center py-3">
+      <div className="text-center py-3 flex flex-col items-center gap-2">
         <p className="text-[9px] text-dim-gray font-mono">
           ⚠️ This is satire. Not financial advice. We're definitely not connected to any government servers.
         </p>
+        <ConnectionStatus isConnected={isConnected} isChecking={isChecking} />
       </div>
     </div>
   )

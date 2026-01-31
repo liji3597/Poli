@@ -7,7 +7,7 @@ import { Home, TrendingUp, Users, Star, Bell, Zap } from 'lucide-react'
 import { WalletConnect } from './wallet-connect'
 
 const navItems = [
-  { href: '/dashboard', label: '控制台', icon: Home, memeLabel: 'HQ' },
+  { href: '/dashboard', label: '仪表盘', icon: Home, memeLabel: 'Dashboard' },
   { href: '/markets', label: '市场', icon: TrendingUp, memeLabel: 'Alpha' },
   { href: '/traders', label: '交易员', icon: Users, memeLabel: 'Traders' },
   { href: '/following', label: '抄作业', icon: Star, memeLabel: 'Copy' },
