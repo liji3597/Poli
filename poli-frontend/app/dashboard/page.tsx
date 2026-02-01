@@ -10,6 +10,7 @@ import {
   useTradersLeaderboard,
   usePollingWhales,
   useHealthCheck,
+  useBatchAIAnalysis,
   getMarketsWithFallback,
   getTradersWithFallback,
   getAlertsWithFallback,
@@ -134,12 +135,35 @@ function HotMarkets({ markets }: { markets: Market[] }) {
   )
 }
 
-// Top Smart Money with real data
+// Top Smart Money with real data and AI profile
 function TopSmartMoney({ traders }: { traders: TraderProfile[] }) {
   const smartMoneyTraders = traders.filter((t) => t.tags.includes('聪明钱')).sort((a, b) => b.winRate - a.winRate).slice(0, 5)
+  // Fallback: if no smart money traders, show top performers by win rate
+  const displayTraders = smartMoneyTraders.length > 0 ? smartMoneyTraders : traders.sort((a, b) => b.winRate - a.winRate).slice(0, 5)
+
+  // Call AI analysis API for each trader
+  const traderAddresses = displayTraders.map(t => t.address)
+  const { analyses: aiAnalyses, isLoading: aiLoading } = useBatchAIAnalysis(traderAddresses, displayTraders.length > 0)
+
   const getWhaleType = (index: number): 'pelosi' | 'trump' | 'pepe' | 'default' => {
     const types: ('pelosi' | 'trump' | 'pepe' | 'default')[] = ['pelosi', 'pepe', 'trump', 'default', 'pepe']
     return types[index] || 'default'
+  }
+
+  // Get AI review for a trader (from API or fallback)
+  // Get AI review for a trader (from API or fallback, limited to 30 chars)
+  const getAIReview = (trader: TraderProfile): string => {
+    let review = ''
+    const apiAnalysis = aiAnalyses[trader.address]
+    if (apiAnalysis?.ai_analysis) {
+      review = apiAnalysis.ai_analysis
+    } else if (apiAnalysis?.label) {
+      review = `${apiAnalysis.label} - ${apiAnalysis.trading_style || ''}风格`
+    } else {
+      review = trader.aiReview || '正在分析中...'
+    }
+    // Limit to 30 characters
+    return review.length > 30 ? review.slice(0, 30) + '...' : review
   }
 
   return (
@@ -149,30 +173,46 @@ function TopSmartMoney({ traders }: { traders: TraderProfile[] }) {
           <Users className="w-4 h-4 text-neon-pink" />
           <span className="gradient-text-pink">国会山巨鲸</span>
         </h3>
-        <span className="cyber-tag-green text-[10px]">// Copy Homework</span>
+        <span className="cyber-tag-green text-[10px]">
+          {aiLoading ? '// Analyzing... 🔄' : '// Smart Money 🧠'}
+        </span>
       </div>
 
-      <div className="space-y-1.5">
-        {smartMoneyTraders.map((trader, index) => (
-          <Link key={trader.address} href={`/traders/${trader.address}`}
-            className="flex items-center justify-between rounded-lg bg-cyber-darker/60 p-2.5 hover:bg-cyber-gray border border-transparent hover:border-neon-pink/30 transition-all group">
-            <div className="flex items-center gap-2.5">
-              <span className="text-[10px] font-mono text-dim-gray w-5">#{index + 1}</span>
-              <WhaleAvatar type={getWhaleType(index)} size="sm" />
-              <span className="font-mono text-xs font-medium text-dim-white group-hover:text-neon-pink">{trader.shortAddress}</span>
-              <div className="flex gap-0.5">
-                {trader.tags.slice(0, 2).map((tag) => (
-                  <span key={tag} className="text-xs" title={tag}>{getTagEmoji(tag)}</span>
-                ))}
+      {displayTraders.length > 0 ? (
+        <div className="space-y-2">
+          {displayTraders.map((trader, index) => (
+            <Link key={trader.address} href={`/traders/${trader.address}`}
+              className="block rounded-lg bg-cyber-darker/60 p-3 hover:bg-cyber-gray border border-transparent hover:border-neon-pink/30 transition-all group">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-[10px] font-mono text-dim-gray w-5">#{index + 1}</span>
+                  <WhaleAvatar type={getWhaleType(index)} size="sm" />
+                  <div className="flex flex-col">
+                    <span className="font-mono text-xs font-medium text-dim-white group-hover:text-neon-pink">{trader.shortAddress}</span>
+                    <div className="flex gap-1 mt-0.5">
+                      {trader.tags.slice(0, 3).map((tag) => (
+                        <span key={tag} className="text-[10px]" title={tag}>{getTagEmoji(tag)}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs font-bold text-neon-green font-mono">{trader.winRate}%</div>
+                  <div className="text-[10px] text-dim-gray font-mono">ROI {trader.roi}%</div>
+                </div>
               </div>
-            </div>
-            <div className="text-right">
-              <div className="text-xs font-bold text-neon-green font-mono">{trader.winRate}%</div>
-              <div className="text-[10px] text-dim-gray font-mono">ROI {trader.roi}%</div>
-            </div>
-          </Link>
-        ))}
-      </div>
+              {/* AI Profile Analysis */}
+              <div className="mt-2 pt-2 border-t border-cyber-border/30">
+                <p className="text-[10px] text-dim-gray line-clamp-2 leading-relaxed">
+                  <span className="text-neon-cyan">🤖 AI:</span> {getAIReview(trader)}
+                </p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center text-xs text-dim-gray py-6">暂无聪明钱数据</div>
+      )}
 
       <Link href="/traders?tab=smart-money" className="mt-4 flex items-center justify-center gap-2 text-xs text-neon-pink hover:text-neon-cyan font-mono py-2 transition-smooth">
         <Copy className="w-3.5 h-3.5" />

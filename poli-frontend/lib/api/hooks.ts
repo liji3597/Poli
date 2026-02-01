@@ -103,6 +103,83 @@ export function useAILeaderboard(params: LeaderboardQueryParams = {}) {
   )
 }
 
+// Hook to analyze a single trader with AI
+export function useTraderAIAnalysis(address: string | null, enabled = true) {
+  const [data, setData] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+
+  useEffect(() => {
+    if (!address || !enabled) return
+
+    let isMounted = true
+    setIsLoading(true)
+
+    api.analyzeTraderAI(address, false)
+      .then((result) => {
+        if (isMounted) {
+          setData(result)
+          setError(null)
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          setError(err instanceof Error ? err : new Error('AI analysis failed'))
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      })
+
+    return () => { isMounted = false }
+  }, [address, enabled])
+
+  return { data, isLoading, error }
+}
+
+// Hook to batch analyze multiple traders
+export function useBatchAIAnalysis(addresses: string[], enabled = true) {
+  const [analyses, setAnalyses] = useState<Record<string, any>>({})
+  const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    if (!enabled || addresses.length === 0) return
+
+    let isMounted = true
+    setIsLoading(true)
+
+    // Analyze each address (with rate limiting)
+    const analyzeAll = async () => {
+      const results: Record<string, any> = {}
+
+      for (const address of addresses.slice(0, 5)) { // Limit to 5 to avoid API overload
+        try {
+          const result = await api.analyzeTraderAI(address, false)
+          if (isMounted) {
+            results[address] = result
+            setAnalyses(prev => ({ ...prev, [address]: result }))
+          }
+        } catch (err) {
+          console.error(`AI analysis failed for ${address}:`, err)
+        }
+        // Small delay between requests
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+
+      if (isMounted) {
+        setIsLoading(false)
+      }
+    }
+
+    analyzeAll()
+    return () => { isMounted = false }
+  }, [addresses.join(','), enabled])
+
+  return { analyses, isLoading }
+}
+
 // ==================== Insider Alerts Hooks ====================
 
 export function useInsiderAlerts(params: InsiderAlertsQueryParams = {}) {
