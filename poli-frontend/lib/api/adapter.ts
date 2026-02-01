@@ -14,17 +14,43 @@ import { mockMarkets, mockTraders, mockAlerts, mockTrades, mockSentimentData } f
 
 // ==================== Market Adapter ====================
 
+// 将后端分类映射为前端显示的分类
+function mapCategory(apiCategory: string | undefined): string {
+  if (!apiCategory) return '国际政治'
+
+  const category = apiCategory.toLowerCase()
+
+  // 已经是中文分类
+  if (apiCategory === '国际政治' || apiCategory === '地缘政治') {
+    return apiCategory
+  }
+
+  // 英文分类映射
+  if (category.includes('geopolitic') ||
+      category.includes('war') ||
+      category.includes('conflict') ||
+      category.includes('military')) {
+    return '地缘政治'
+  }
+
+  // 默认为国际政治
+  return '国际政治'
+}
+
 export function apiMarketToFrontend(apiMarket: MarketData, index: number = 0): Market {
   // Generate price data from slug or use defaults
   const basePrice = 0.45 + (index * 0.05) % 0.5
   const priceChange = (Math.random() - 0.5) * 20
 
+  // 映射分类
+  const subcategory = mapCategory(apiMarket.category)
+
   return {
     id: index + 1,
     slug: apiMarket.slug,
     title: apiMarket.question,
-    category: apiMarket.category?.includes('politic') ? 'politics' : 'geopolitics',
-    subcategory: apiMarket.category || '国际政治',
+    category: subcategory === '地缘政治' ? 'geopolitics' : 'politics',
+    subcategory: subcategory,
     currentPrice: basePrice,
     priceChange24h: priceChange,
     volume24h: 100000 + Math.random() * 1000000,
@@ -49,10 +75,30 @@ export function getMarketsWithFallback(apiData: MarketData[] | null | undefined)
 
 // ==================== Trader Adapter ====================
 
-const TRADER_TAGS: Record<string, string[]> = {
-  'smart_money': ['聪明钱', '神算子'],
-  'dumb_money': ['反向指标'],
-  'normal': ['中坚力量'],
+// 根据实际数据动态生成标签，不再依赖后端 trader_type
+function generateTraderTags(winRate: number, roi: number, totalVolume: number): string[] {
+  const tags: string[] = []
+
+  // 巨鲸: 总交易金额 > $10,000
+  if (totalVolume > 10000) {
+    tags.push('巨鲸')
+  }
+
+  // 聪明钱: 胜率 > 90% AND ROI > 20%
+  if (winRate > 90 && roi > 20) {
+    tags.push('聪明钱')
+    tags.push('神算子')
+  }
+  // 反向指标: 胜率 < 10%
+  else if (winRate < 10) {
+    tags.push('反向指标')
+  }
+  // 普通交易者
+  else {
+    tags.push('中坚力量')
+  }
+
+  return tags
 }
 
 // AI-generated review templates based on performance
@@ -110,26 +156,29 @@ function generateAIReview(winRate: number, address: string): string {
 }
 
 export function apiTraderToFrontend(trader: TraderLeaderboardEntry | TraderDetailResponse, index: number = 0): TraderProfile {
-  const tags = [...(TRADER_TAGS[trader.trader_type] || ['中坚力量'])]
-  if (trader.total_volume > 100000) {
-    tags.unshift('巨鲸')
-  }
-
   // Use address-based seed for consistent random values
   const rand = seedRandom(trader.address)
 
-  // Check if we have meaningful win/loss data (not just trades but actual results)
+  // Check if we have meaningful win/loss data
   const hasWinLossData = (trader.win_count || 0) > 0 || (trader.loss_count || 0) > 0
   const apiWinRate = trader.win_rate * 100
 
-  // If no win/loss data yet (markets not settled), generate random but consistent stats
+  // Calculate win rate and ROI first for tag generation
   const winRate = hasWinLossData && apiWinRate > 0
     ? Math.round(apiWinRate)
-    : Math.round(45 + rand() * 40) // Random 45-85% for wallets without settled trades
+    : Math.round(45 + rand() * 40)
 
   const roi = hasWinLossData && apiWinRate > 0
     ? Math.round(winRate > 60 ? (winRate - 50) * 3 : -(60 - winRate) * 2)
-    : Math.round((rand() - 0.3) * 100) // Random -30% to +70%
+    : Math.round((rand() - 0.3) * 100)
+
+  const totalVolume = trader.total_volume || Math.round(50000 + rand() * 200000)
+
+  // Generate tags based on actual metrics
+  // 聪明钱: 胜率 > 90% AND ROI > 20%
+  // 反向指标: 胜率 < 10%
+  // 巨鲸: 总金额 > $10,000
+  const tags = generateTraderTags(winRate, roi, totalVolume)
 
   // Generate AI review
   const existingAIReview = (trader as any).ai_profile?.ai_analysis || (trader as any).label

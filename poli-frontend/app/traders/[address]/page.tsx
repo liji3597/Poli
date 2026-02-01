@@ -4,10 +4,29 @@ import Link from 'next/link'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { cn, formatNumber, formatTimeAgo, formatDate, getTagEmoji, getTagStyle } from '@/lib/utils'
 import { mockTraders, mockMarkets } from '@/lib/mock-data'
-import { ArrowLeft, Users, Target, Brain, History } from 'lucide-react'
+import { useTraderDetail } from '@/lib/api/hooks'
+import { apiTraderToFrontend } from '@/lib/api/adapter'
+import { ArrowLeft, Users, Target, Brain, History, Loader2 } from 'lucide-react'
 
 export default function TraderDetailPage({ params }: { params: { address: string } }) {
-  const trader = mockTraders.find((t) => t.address === params.address)
+  // 从 API 获取交易者详情
+  const { data: apiTrader, isLoading, error } = useTraderDetail(params.address)
+
+  // 优先使用 API 数据，mock 数据作为后备
+  const mockTrader = mockTraders.find((t) => t.address === params.address)
+
+  // 合并数据源
+  const trader = apiTrader
+    ? apiTraderToFrontend(apiTrader as any, 0)
+    : mockTrader
+
+  if (isLoading) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Loader2 className="w-8 h-8 text-neon-pink animate-spin" />
+      </div>
+    )
+  }
 
   if (!trader) {
     return (

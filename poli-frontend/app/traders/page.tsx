@@ -4,16 +4,19 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { cn, formatNumber, getTagEmoji } from '@/lib/utils'
 import { mockTraders } from '@/lib/mock-data'
-import { Users, Copy, Eye } from 'lucide-react'
+import { useTradersLeaderboard } from '@/lib/api/hooks'
+import { getTradersWithFallback } from '@/lib/api/adapter'
+import { useFollowing } from '@/lib/hooks/use-following'
+import { Users, Copy, Eye, Loader2, UserPlus, UserCheck } from 'lucide-react'
 
 type TabType = 'smart_money' | 'reverse' | 'whale' | 'all'
 
-function TradersTabs({ activeTab, setActiveTab }: { activeTab: TabType; setActiveTab: (tab: TabType) => void }) {
+function TradersTabs({ activeTab, setActiveTab, traders }: { activeTab: TabType; setActiveTab: (tab: TabType) => void; traders: any[] }) {
   const tabs = [
-    { id: 'smart_money' as TabType, label: '🏆 聪明钱', count: mockTraders.filter((t) => t.tags.includes('聪明钱')).length },
-    { id: 'reverse' as TabType, label: '🔴 反向指标', count: mockTraders.filter((t) => t.tags.includes('反向指标')).length },
-    { id: 'whale' as TabType, label: '🐋 巨鲸', count: mockTraders.filter((t) => t.tags.includes('巨鲸')).length },
-    { id: 'all' as TabType, label: '🎯 全部', count: mockTraders.length },
+    { id: 'smart_money' as TabType, label: '🏆 聪明钱', count: traders.filter((t) => t.tags.includes('聪明钱')).length },
+    { id: 'reverse' as TabType, label: '🔴 反向指标', count: traders.filter((t) => t.tags.includes('反向指标')).length },
+    { id: 'whale' as TabType, label: '🐋 巨鲸', count: traders.filter((t) => t.tags.includes('巨鲸')).length },
+    { id: 'all' as TabType, label: '🎯 全部', count: traders.length },
   ]
 
   return (
@@ -37,8 +40,12 @@ function TradersTabs({ activeTab, setActiveTab }: { activeTab: TabType; setActiv
   )
 }
 
-function TraderCard({ trader }: { trader: any }) {
-  const [isFollowing, setIsFollowing] = useState(false)
+function TraderCard({ trader, isFollowing, onFollow, onUnfollow }: {
+  trader: any
+  isFollowing: boolean
+  onFollow: () => void
+  onUnfollow: () => void
+}) {
 
   return (
     <div className="cyber-card p-5">
@@ -56,15 +63,15 @@ function TraderCard({ trader }: { trader: any }) {
           </div>
         </div>
         <button
-          onClick={() => setIsFollowing(!isFollowing)}
+          onClick={() => isFollowing ? onUnfollow() : onFollow()}
           className={cn(
-            "rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
+            "rounded-lg px-3 py-1.5 text-xs font-medium transition-all flex items-center gap-1.5",
             isFollowing
-              ? "bg-cyber-gray text-dim-white border border-cyber-border"
+              ? "bg-cyber-gray text-dim-white border border-cyber-border hover:border-neon-red/50 hover:text-neon-red"
               : "bg-neon-cyan text-cyber-black hover:bg-neon-green"
           )}
         >
-          {isFollowing ? "✓ 已关注" : "+ 关注"}
+          {isFollowing ? <><UserCheck className="w-3.5 h-3.5" /> 已关注</> : <><UserPlus className="w-3.5 h-3.5" /> 关注</>}
         </button>
       </div>
 
@@ -144,7 +151,14 @@ export default function TradersPage() {
   const [activeTab, setActiveTab] = useState<TabType>('smart_money')
   const [sortBy, setSortBy] = useState<'win_rate' | 'roi' | 'profit' | 'volume'>('win_rate')
 
-  const filteredTraders = mockTraders
+  // 从 API 获取交易者数据，mock 数据作为后备
+  const { data: apiData, isLoading, error } = useTradersLeaderboard({ limit: 100, min_trades: 3 })
+  const traders = getTradersWithFallback(apiData?.data)
+
+  // 关注功能 - 保存到 localStorage
+  const { follow, unfollow, isFollowing } = useFollowing()
+
+  const filteredTraders = traders
     .filter((trader) => {
       if (activeTab === 'all') return true
       if (activeTab === 'smart_money') return trader.tags.includes('聪明钱')
@@ -172,7 +186,13 @@ export default function TradersPage() {
         <p className="text-[10px] text-dim-gray mt-1 font-mono">// Copy homework from the best whales</p>
       </div>
 
-      <TradersTabs activeTab={activeTab} setActiveTab={setActiveTab} />
+      {isLoading ? (
+        <div className="flex h-48 items-center justify-center">
+          <Loader2 className="w-8 h-8 text-neon-pink animate-spin" />
+        </div>
+      ) : (
+        <>
+          <TradersTabs activeTab={activeTab} setActiveTab={setActiveTab} traders={traders} />
 
       <div className="flex items-center gap-2">
         <span className="text-xs text-dim-gray font-mono">排序:</span>
@@ -199,9 +219,17 @@ export default function TradersPage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         {filteredTraders.map((trader) => (
-          <TraderCard key={trader.address} trader={trader} />
+          <TraderCard
+            key={trader.address}
+            trader={trader}
+            isFollowing={isFollowing(trader.address)}
+            onFollow={() => follow(trader.address)}
+            onUnfollow={() => unfollow(trader.address)}
+          />
         ))}
       </div>
+        </>
+      )}
     </div>
   )
 }
