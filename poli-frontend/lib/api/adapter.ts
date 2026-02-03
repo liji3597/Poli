@@ -84,8 +84,8 @@ function generateTraderTags(winRate: number, roi: number, totalVolume: number): 
     tags.push('巨鲸')
   }
 
-  // 聪明钱: 胜率 > 90% AND ROI > 20%
-  if (winRate > 90 && roi > 20) {
+  // 聪明钱: 胜率 > 80% AND ROI > 20%
+  if (winRate > 80 && roi > 20) {
     tags.push('聪明钱')
     tags.push('神算子')
   }
